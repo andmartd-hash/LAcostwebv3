@@ -7,7 +7,7 @@ import io
 # ==========================================
 # 0. CONFIGURACIÓN Y ESTILOS
 # ==========================================
-st.set_page_config(page_title="LAcostWeb V15 - Master", layout="wide", page_icon="🏢")
+st.set_page_config(page_title="LAcostWeb V16 - Robust", layout="wide", page_icon="🏢")
 
 st.markdown("""
     <style>
@@ -93,29 +93,43 @@ def remove_line(index):
     st.session_state.lines.pop(index)
 
 # ==========================================
-# 3. LÓGICA PROCESAMIENTO V3 (NUEVO)
+# 3. LÓGICA PROCESAMIENTO V3 (CORREGIDO)
 # ==========================================
 def calcular_costo_v3(fila):
-    """Aplica la regla de Unit Loc 10/Ecuador para archivos V3"""
-    # 1. Obtener datos seguros
-    costo = pd.to_numeric(fila.get('Unit Cost', 0), errors='coerce') or 0.0
-    moneda = str(fila.get('Currency', '')).strip().upper()
-    er = pd.to_numeric(fila.get('ER', 1), errors='coerce') or 1.0
-    
-    # 2. Limpiar Unit Loc (ej: "10.0" -> "10")
-    raw_loc = str(fila.get('Unit Loc', '')).strip()
-    unit_loc = raw_loc.split('.')[0].upper()
+    """
+    Aplica la regla:
+    - Normaliza moneda (US/USD).
+    - Excepción Unit Loc 10/Ecuador.
+    """
+    # 1. Obtener datos con seguridad (Manejo de vacíos y espacios)
+    try:
+        costo = pd.to_numeric(fila.get('Unit Cost', 0), errors='coerce') 
+        if pd.isna(costo): costo = 0.0
+        
+        er = pd.to_numeric(fila.get('ER', 1), errors='coerce')
+        if pd.isna(er): er = 1.0
+        
+        moneda = str(fila.get('Currency', '')).strip().upper()
+        
+        raw_loc = str(fila.get('Unit Loc', '')).strip()
+        unit_loc = raw_loc.split('.')[0].upper() # Limpia "10.0" -> "10"
+        
+        # 2. Regla de Excepción
+        es_excepcion = unit_loc in ['10', 'ECUADOR']
+        
+        # 3. Regla de Moneda (Acepta US y USD)
+        es_dolar = moneda in ['US', 'USD']
 
-    # 3. Regla de Excepción
-    es_excepcion = unit_loc in ['10', 'ECUADOR']
-
-    # 4. Cálculo
-    # Si es US y NO es excepción -> Dividir por ER
-    if moneda == 'US' and not es_excepcion:
-        if er == 0: return 0.0
-        return costo / er
-    else:
-        return costo
+        # 4. Cálculo
+        # Si es Dólar Y NO es excepción -> Dividir por ER
+        if es_dolar and not es_excepcion:
+            if er == 0: return 0.0
+            return costo / er
+        else:
+            return costo
+            
+    except Exception:
+        return 0.0
 
 # ==========================================
 # 4. INTERFAZ PRINCIPAL
@@ -140,19 +154,18 @@ with st.sidebar:
     st.markdown("---")
     if currency_sel != "USD": st.metric("FX Rate", f"{fx_rate:,.2f}")
     st.metric("Risk", f"{risk_val:.1%}")
-    st.caption("LAcostWeb V15 | Master Cloud")
+    st.caption("LAcostWeb V16 | Robust Fix")
 
 # --- HEADER GLOBAL ---
-st.title("LAcostWeb V15 🚀")
+st.title("LAcostWeb V16 🚀")
 
 # PESTAÑAS PARA SEPARAR MODOS
 tab_manual, tab_file = st.tabs(["📝 Calculadora Manual", "📂 Procesar Archivo V3"])
 
 # ==========================================
-# PESTAÑA 1: CALCULADORA MANUAL (V14 Original)
+# PESTAÑA 1: CALCULADORA MANUAL
 # ==========================================
 with tab_manual:
-    # 1. HEADER INPUTS
     with st.container():
         c_cust1, c_cust2, c_date1, c_date2 = st.columns([2, 1, 1, 1])
         with c_cust1: cust_name = st.text_input("Customer Name", placeholder="Client Name")
@@ -162,7 +175,6 @@ with tab_manual:
 
     st.divider()
 
-    # 2. LÍNEAS DE SERVICIO
     st.subheader("📋 Services")
 
     grand_total_price = 0.0
@@ -173,8 +185,6 @@ with tab_manual:
         current_offering_name = line.get("selected_offering", "New Item")
         
         with st.expander(f"🔹 {i+1}. {current_offering_name}", expanded=True):
-            
-            # FILA 1
             r1_c1, r1_c2, r1_c3, r1_c4 = st.columns([4, 0.8, 0.8, 0.3])
             
             with r1_c1:
@@ -191,12 +201,9 @@ with tab_manual:
                     remove_line(i)
                     st.rerun()
 
-            # FILA 2
             r2_c1, r2_c2, r2_c3, r2_c_dur, r2_c4, r2_c5, r2_c6, r2_c7 = st.columns([1.5, 0.9, 0.9, 0.5, 0.6, 0.8, 0.6, 1.2])
             
             with r2_c1: desc = st.text_input("Desc", key=f"desc_{i}", placeholder="Details...")
-            
-            # FECHAS Y DURACIÓN
             with r2_c2: 
                 s_s = st.date_input("Start", value=line.get("start_date", date.today()), key=f"ss_{i}")
                 st.session_state.lines[i]["start_date"] = s_s 
@@ -205,9 +212,7 @@ with tab_manual:
                 st.session_state.lines[i]["end_date"] = s_e 
             
             dur = calculate_months(s_s, s_e)
-            
-            with r2_c_dur:
-                st.text_input("Mth", value=str(dur), disabled=True, key=f"dur_disp_{i}")
+            with r2_c_dur: st.text_input("Mth", value=str(dur), disabled=True, key=f"dur_disp_{i}")
 
             with r2_c4: 
                 qty = st.number_input("Qty", min_value=1, value=1, key=f"qty_{i}")
@@ -226,7 +231,6 @@ with tab_manual:
                 st.session_state.lines[i]["gp_percent"] = gp_percent_val
                 gp = gp_percent_val / 100.0
 
-            # CÁLCULO FINAL (Lógica Manual V14)
             total_cost = unit_cost * qty * dur * fx_rate
             divisor = 1 - gp
             base_price = (total_cost * (1 + risk_val)) / divisor if divisor > 0 else 0
@@ -248,7 +252,6 @@ with tab_manual:
 
     st.divider()
 
-    # 3. RESUMEN
     col_sum1, col_sum2 = st.columns([3, 1])
     with col_sum1:
         if summary_lines:
@@ -277,42 +280,64 @@ with tab_manual:
                 st.markdown(f'<meta http-equiv="refresh" content="0;url={link}">', unsafe_allow_html=True)
 
 # ==========================================
-# PESTAÑA 2: CARGA DE ARCHIVOS V3 (Nuevo)
+# PESTAÑA 2: CARGA DE ARCHIVOS V3 (ROBUST)
 # ==========================================
 with tab_file:
-    st.header("📂 Procesamiento Masivo (Logica V3)")
-    st.info("Regla aplicada: Si Currency es US y Unit Loc NO es '10' o 'Ecuador', se divide el Costo por la ER. En caso contrario, se mantiene.")
+    st.header("📂 Procesamiento Masivo (Lógica V3)")
+    st.info("Acepta archivos con columnas: 'Unit Cost', 'Currency' (US/USD), 'ER', 'Unit Loc'")
     
-    uploaded_file = st.file_uploader("Sube tu archivo V3 (Excel/CSV)", type=['xlsx', 'csv'])
+    uploaded_file = st.file_uploader("Sube tu archivo (Excel o CSV)", type=['xlsx', 'csv'])
     
     if uploaded_file:
         try:
+            # Detección inteligente de formato y separador
             if uploaded_file.name.endswith('.csv'):
-                df = pd.read_csv(uploaded_file)
+                try:
+                    df = pd.read_csv(uploaded_file)
+                    # Si falla al leer columnas clave, intenta con punto y coma
+                    if 'Unit Cost' not in df.columns and len(df.columns) < 2:
+                        uploaded_file.seek(0)
+                        df = pd.read_csv(uploaded_file, sep=';')
+                except:
+                    uploaded_file.seek(0)
+                    df = pd.read_csv(uploaded_file, sep=';')
             else:
                 df = pd.read_excel(uploaded_file)
             
-            # Verificación de columnas
+            # Limpieza de nombres de columnas (Quita espacios extra en encabezados)
+            df.columns = [c.strip() for c in df.columns]
+
+            # Verificación de columnas requeridas
             cols_req = ['Unit Cost', 'Currency', 'ER', 'Unit Loc']
-            if all(col in df.columns for col in cols_req):
+            missing = [c for c in cols_req if c not in df.columns]
+
+            if not missing:
+                st.success(f"Archivo válido: {len(df)} filas detectadas.")
+                
                 if st.button("🚀 Ejecutar Cálculo V3"):
                     # Aplicar lógica
                     df['Costo Final Calculado'] = df.apply(calcular_costo_v3, axis=1)
                     
-                    st.success("¡Cálculo completado!")
-                    st.dataframe(df[['Unit Loc', 'Currency', 'ER', 'Unit Cost', 'Costo Final Calculado']].head(10))
+                    st.subheader("Resultado:")
+                    # Muestra columnas relevantes primero
+                    cols_show = ['Unit Loc', 'Currency', 'ER', 'Unit Cost', 'Costo Final Calculado']
+                    # Agregar otras columnas si existen
+                    cols_show += [c for c in df.columns if c not in cols_show]
+                    
+                    st.dataframe(df[cols_show].head(10))
                     
                     # Descargar
                     csv_buffer = df.to_csv(index=False).encode('utf-8')
                     st.download_button(
-                        "📥 Descargar Resultado",
+                        "📥 Descargar CSV Resultado",
                         data=csv_buffer,
                         file_name="V3_Procesado_Final.csv",
                         mime="text/csv"
                     )
             else:
-                st.error(f"Faltan columnas. Requeridas: {cols_req}")
-                st.write("Columnas encontradas:", list(df.columns))
+                st.error(f"Error: Faltan estas columnas en el archivo: {missing}")
+                st.write("Columnas detectadas en tu archivo:", list(df.columns))
+                st.warning("Verifica que los nombres de las columnas sean exactos (Mayúsculas importan).")
                 
         except Exception as e:
-            st.error(f"Error leyendo el archivo: {e}")
+            st.error(f"Error crítico leyendo el archivo: {e}")
