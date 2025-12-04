@@ -7,7 +7,7 @@ import io
 # ==========================================
 # 0. CONFIGURACIÓN Y ESTILOS
 # ==========================================
-st.set_page_config(page_title="LAcostWeb V17 - Diagnostic", layout="wide", page_icon="🏢")
+st.set_page_config(page_title="LAcostWeb V18 - Flexible", layout="wide", page_icon="🏢")
 
 st.markdown("""
     <style>
@@ -93,18 +93,15 @@ def remove_line(index):
     st.session_state.lines.pop(index)
 
 # ==========================================
-# 3. LÓGICA PROCESAMIENTO V3 (Diagnóstico)
+# 3. LÓGICA PROCESAMIENTO V3 (Flexible)
 # ==========================================
 def calcular_costo_v3(fila, cols_map):
-    """
-    Aplica la regla con mapeo dinámico de columnas
-    """
     try:
-        # Usamos el mapa de columnas detectado para ser flexibles
+        # Usamos el mapeo dinámico
         c_cost = cols_map['Unit Cost']
         c_curr = cols_map['Currency']
         c_er = cols_map['ER']
-        c_loc = cols_map['Unit Loc']
+        c_loc = cols_map['Unit Loc'] # Puede ser "Unit Loc" o "Country"
 
         costo = pd.to_numeric(fila.get(c_cost, 0), errors='coerce') 
         if pd.isna(costo): costo = 0.0
@@ -145,14 +142,13 @@ with st.sidebar:
     risk_val = float(DB_RISK[DB_RISK["Risk_Level"] == risk_sel]["Contingency"].iloc[0])
     fx_rate, tax_rate = get_country_data(country_sel, currency_sel)
     st.markdown("---")
-    st.caption("LAcostWeb V17 | Auto-Cleaner")
+    st.caption("LAcostWeb V18 | Auto-Map")
 
-st.title("LAcostWeb V17 🚀")
+st.title("LAcostWeb V18 🚀")
 tab_manual, tab_file = st.tabs(["📝 Calculadora Manual", "📂 Procesar Archivo V3"])
 
 # --- PESTAÑA MANUAL ---
 with tab_manual:
-    # (Código manual V14 intacto para ahorrar espacio visual, funciona igual)
     with st.container():
         c_c1, c_c2, c_d1, c_d2 = st.columns([2, 1, 1, 1])
         cust_name = c_c1.text_input("Customer Name")
@@ -160,23 +156,18 @@ with tab_manual:
         
     st.divider()
     st.subheader("📋 Services (Manual Mode)")
-    
-    # ... (La lógica manual completa está preservada en V14/V16, aquí resumida visualmente
-    # Si necesitas re-pegar la parte manual completa dímelo, pero el error está en el archivo)
     st.info("Utiliza esta pestaña para cotizaciones manuales línea por línea.")
 
-# --- PESTAÑA ARCHIVOS (SOLUCIÓN DIAGNÓSTICO) ---
+# --- PESTAÑA ARCHIVOS (INTELIGENTE) ---
 with tab_file:
-    st.header("📂 Procesamiento Inteligente V3")
-    st.markdown("El sistema intentará arreglar los nombres de columnas automáticamente.")
+    st.header("📂 Procesamiento V3 (Flexible)")
+    st.markdown("El sistema acepta columnas `Unit Loc` O `Country`.")
     
     uploaded_file = st.file_uploader("Sube tu archivo (Excel o CSV)", type=['xlsx', 'csv'])
     
     if uploaded_file:
         try:
-            # 1. Carga agnóstica
             if uploaded_file.name.endswith('.csv'):
-                # Intenta coma, luego punto y coma
                 try:
                     df = pd.read_csv(uploaded_file)
                     if len(df.columns) < 2: 
@@ -188,31 +179,30 @@ with tab_file:
             else:
                 df = pd.read_excel(uploaded_file)
             
-            # 2. LIMPIEZA DE COLUMNAS (La Magia)
-            # Quitamos espacios al principio y final de cada nombre de columna
+            # Limpieza básica
             df.columns = [str(c).strip() for c in df.columns]
             
-            # 3. BUSQUEDA INTELIGENTE DE COLUMNAS
-            # Creamos un mapa para saber cómo se llama la columna en TU archivo realmente
+            # === MAPEO INTELIGENTE ===
             cols_map = {}
             
-            # Función auxiliar para buscar ignorando mayúsculas
-            def find_col(target):
+            def find_col(target_list):
+                # Busca cualquiera de los nombres de la lista en las columnas del archivo
                 for col in df.columns:
-                    if col.upper() == target.upper():
+                    if col.upper() in [t.upper() for t in target_list]:
                         return col
                 return None
 
-            cols_map['Unit Cost'] = find_col('Unit Cost')
-            cols_map['Currency'] = find_col('Currency')
-            cols_map['ER'] = find_col('ER')
-            cols_map['Unit Loc'] = find_col('Unit Loc')
+            # Buscamos variantes para cada campo
+            cols_map['Unit Cost'] = find_col(['Unit Cost', 'Cost'])
+            cols_map['Currency']  = find_col(['Currency', 'Curr', 'Moneda'])
+            cols_map['ER']        = find_col(['ER', 'Exchange Rate', 'Tasa'])
+            # Aquí está el truco: Busca "Unit Loc" Y TAMBIÉN "Country"
+            cols_map['Unit Loc']  = find_col(['Unit Loc', 'Unit Location', 'Country', 'Pais'])
 
-            # Verificar si falta alguna (si el valor en el mapa es None)
             missing = [k for k, v in cols_map.items() if v is None]
 
             if not missing:
-                st.success(f"✅ Archivo validado. Columnas mapeadas: {cols_map}")
+                st.success(f"✅ Archivo validado. Usando columna '{cols_map['Unit Loc']}' como ubicación.")
                 
                 if st.button("🚀 Calcular V3"):
                     df['Costo Final Calculado'] = df.apply(lambda row: calcular_costo_v3(row, cols_map), axis=1)
@@ -222,12 +212,9 @@ with tab_file:
                     csv_buffer = df.to_csv(index=False).encode('utf-8')
                     st.download_button("📥 Descargar Resultado", csv_buffer, "V3_Final.csv", "text/csv")
             else:
-                st.error("❌ ERROR: No encuentro las columnas necesarias.")
-                st.write(f"Me faltan estas columnas: **{missing}**")
-                
-                st.warning("🧐 DIAGNÓSTICO: Estas son las columnas que LEO en tu archivo:")
+                st.error("❌ ERROR: Aún me faltan datos.")
+                st.write(f"No pude encontrar columnas para: **{missing}**")
                 st.code(list(df.columns))
-                st.markdown("Compara la lista de arriba con tus columnas. ¿Quizás tienen otro nombre?")
 
         except Exception as e:
-            st.error(f"Error grave leyendo el archivo: {e}")
+            st.error(f"Error procesando: {e}")
